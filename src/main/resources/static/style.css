@@ -1,0 +1,72 @@
+/* Import a modern font from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+
+/* Basic body and container styling */
+body {
+    font-family: 'Roboto', sans-serif;
+    background-color: #282c34; /* Dark charcoal background */
+    color: #e0e0e0; /* Light gray for text */
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+.container {
+    background-color: #3b424d; /* Slightly lighter dark gray for the container */
+    padding: 2.5rem 3.5rem; /* Generous padding */
+    border-radius: 12px; /* Rounded corners */
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4); /* Deeper shadow for dark theme */
+    text-align: center;
+    max-width: 500px;
+    width: 90%;
+    transition: transform 0.3s ease;
+}
+
+.container:hover {
+    transform: translateY(-5px); /* Subtle lift on hover */
+}
+
+/* Heading and paragraph styling */
+h1 {
+    color: #8bbce1; /* A muted, soft blue for headings */
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.5px;
+}
+
+p {
+    font-size: 1.1rem;
+    line-height: 1.6;
+    margin-top: 0;
+}
+
+p b {
+    color: #c0c0c0; /* A slightly darker light gray for bold text */
+    font-weight: 700;
+}
+
+/* Styling for the horizontal rule */
+hr {
+    border: 0;
+    height: 1px;
+    background-image: linear-gradient(to right, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0));
+    margin: 2rem 0;
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 600px) {
+    .container {
+        padding: 1.5rem 2rem;
+    }
+
+    h1 {
+        font-size: 2rem;
+    }
+
+    p {
+        font-size: 1rem;
+    }
+}
