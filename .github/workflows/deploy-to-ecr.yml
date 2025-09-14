@@ -119,20 +119,29 @@ jobs:
           AWS_REGION: eu-west-1
         run: |
           echo "Running database migrations..."
-
+          
           # Get infrastructure details from CloudFormation outputs
           SUBNET1=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet1Id'].OutputValue" --output text)
           SUBNET2=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet2Id'].OutputValue" --output text)
           SECURITY_GROUP=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSSecurityGroupId'].OutputValue" --output text)
           CLUSTER_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSClusterName'].OutputValue" --output text)
-
-          # Run migration task using the family name
+          
+          # For Fargate, use launch type instead of worrying about container instances
+          echo "Running migration task on Fargate..."
           MIGRATION_TASK=$(aws ecs run-task \
-            --cluster $CLUSTER_NAME \
-            --task-definition java-full-stack-migrations \
-            --network-configuration "awsvpcConfiguration={subnets=[$SUBNET1,$SUBNET2],securityGroups=[$SECURITY_GROUP],assignPublicIp=DISABLED}" \
-            --query 'tasks[0].taskArn' \
-            --output text)
+          --cluster $CLUSTER_NAME \
+          --task-definition java-full-stack-migrations \
+          --launch-type FARGATE \
+          --network-configuration "awsvpcConfiguration={subnets=[$SUBNET1,$SUBNET2],securityGroups=[$SECURITY_GROUP],assignPublicIp=DISABLED}" \
+          --query 'tasks[0].taskArn' \
+          --output text)
+          
+          if [ $? -ne 0 ]; then
+          echo "❌ Failed to start migration task"
+          exit 1
+          fi
+          
+          echo "Migration task started: $MIGRATION_TASK"
           
           echo "Migration task started: $MIGRATION_TASK"
 
