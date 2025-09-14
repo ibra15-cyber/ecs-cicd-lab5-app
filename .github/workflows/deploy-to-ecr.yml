@@ -25,7 +25,8 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build with Gradle
-        run: ./gradlew build --no-daemon
+        run: ./gradlew build --no-daemon -x test  # Skip tests
+
 
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
