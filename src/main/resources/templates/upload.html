@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Photo</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="container">
+    <h1>Upload a Photo</h1>
+    <form id="uploadForm" enctype="multipart/form-data">
+        <input type="file" id="photoFile" accept="image/*" required>
+        <textarea id="photoDescription" placeholder="Photo description" required></textarea>
+        <button type="submit">Upload</button>
+    </form>
+    <a href="/gallery">View Gallery</a>
+</div>
+<script>
+    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData();
+        formData.append('file', document.getElementById('photoFile').files[0]);
+        formData.append('description', document.getElementById('photoDescription').value);
+
+        try {
+            const response = await fetch('/api/photos/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (response.ok) {
+                alert('Photo uploaded successfully!');
+                document.getElementById('uploadForm').reset();
+            } else {
+                alert('Upload failed');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+        }
+    });
+</script>
+</body>
+</html>

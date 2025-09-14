@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Photo Gallery</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <style>
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .photo-item {
+            background: #3b424d;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .photo-item img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Photo Gallery</h1>
+    <div id="photoGallery" class="gallery-grid"></div>
+    <a href="/upload">Upload Another Photo</a>
+</div>
+<script>
+    async function loadPhotos() {
+        try {
+            const response = await fetch('/api/photos');
+            const photos = await response.json();
+
+            const gallery = document.getElementById('photoGallery');
+            gallery.innerHTML = '';
+
+            photos.forEach(photo => {
+                const photoElement = document.createElement('div');
+                photoElement.className = 'photo-item';
+                photoElement.innerHTML = `
+                        <img src="${photo.presignedUrl}" alt="${photo.description}">
+                        <p>${photo.description}</p>
+                    `;
+                gallery.appendChild(photoElement);
+            });
+        } catch (error) {
+            console.error('Error loading photos:', error);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', loadPhotos);
+</script>
+</body>
+</html>
