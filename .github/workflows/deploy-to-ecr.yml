@@ -56,10 +56,10 @@ jobs:
           AWS_REGION: eu-west-1
         run: |
           # Get values from CloudFormation outputs instead of dynamic API calls
-          DB_ENDPOINT=$(aws cloudformation describe-stacks --stack-name java-full-stack --query "Stacks[0].Outputs[?OutputKey=='RDSInstanceEndpoint'].OutputValue" --output text)
-          DB_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name java-full-stack --query "Stacks[0].Outputs[?OutputKey=='DBSecretArn'].OutputValue" --output text)
-          TASK_EXEC_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name java-full-stack --query "Stacks[0].Outputs[?OutputKey=='ECSTaskExecutionRoleArn'].OutputValue" --output text)
-          TASK_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name java-full-stack --query "Stacks[0].Outputs[?OutputKey=='ECSTaskRoleArn'].OutputValue" --output text)
+          DB_ENDPOINT=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='RDSInstanceEndpoint'].OutputValue" --output text)
+          DB_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='DBSecretArn'].OutputValue" --output text)
+          TASK_EXEC_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskExecutionRoleArn'].OutputValue" --output text)
+          TASK_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskRoleArn'].OutputValue" --output text)
 
           # Create migration task definition JSON
           cat > migration-taskdef.json << EOF
@@ -121,10 +121,10 @@ jobs:
           echo "Running database migrations..."
 
           # Get infrastructure details from CloudFormation outputs
-          SUBNET1=$(aws cloudformation describe-stacks --stack-name java-full-stack --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet1Id'].OutputValue" --output text)
-          SUBNET2=$(aws cloudformation describe-stacks --stack-name java-full-stack --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet2Id'].OutputValue" --output text)
-          SECURITY_GROUP=$(aws cloudformation describe-stacks --stack-name java-full-stack --query "Stacks[0].Outputs[?OutputKey=='ECSSecurityGroupId'].OutputValue" --output text)
-          CLUSTER_NAME=$(aws cloudformation describe-stacks --stack-name java-full-stack --query "Stacks[0].Outputs[?OutputKey=='ECSClusterName'].OutputValue" --output text)
+          SUBNET1=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet1Id'].OutputValue" --output text)
+          SUBNET2=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet2Id'].OutputValue" --output text)
+          SECURITY_GROUP=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSSecurityGroupId'].OutputValue" --output text)
+          CLUSTER_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSClusterName'].OutputValue" --output text)
 
           # Run migration task using the family name
           MIGRATION_TASK=$(aws ecs run-task \
@@ -180,11 +180,11 @@ jobs:
           fi
           
           # Get values from CloudFormation outputs
-          DB_ENDPOINT=$(aws cloudformation describe-stacks --stack-name java-full-stack --query "Stacks[0].Outputs[?OutputKey=='RDSInstanceEndpoint'].OutputValue" --output text)
-          DB_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name java-full-stack --query "Stacks[0].Outputs[?OutputKey=='DBSecretArn'].OutputValue" --output text)
-          S3_BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name java-full-stack --query "Stacks[0].Outputs[?OutputKey=='S3BucketName'].OutputValue" --output text)
-          TASK_EXEC_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name java-full-stack --query "Stacks[0].Outputs[?OutputKey=='ECSTaskExecutionRoleArn'].OutputValue" --output text)
-          TASK_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name java-full-stack --query "Stacks[0].Outputs[?OutputKey=='ECSTaskRoleArn'].OutputValue" --output text)
+          DB_ENDPOINT=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='RDSInstanceEndpoint'].OutputValue" --output text)
+          DB_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='DBSecretArn'].OutputValue" --output text)
+          S3_BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='S3BucketName'].OutputValue" --output text)
+          TASK_EXEC_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskExecutionRoleArn'].OutputValue" --output text)
+          TASK_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskRoleArn'].OutputValue" --output text)
           
           echo "DB Endpoint: $DB_ENDPOINT"
           echo "DB Secret ARN: $DB_SECRET_ARN"
@@ -279,7 +279,7 @@ jobs:
       - name: Upload Deployment Artifacts to S3
         run: |
           # Get the artifact bucket name from CloudFormation
-          ARTIFACT_BUCKET=$(aws cloudformation describe-stacks --stack-name java-full-stack --query "Stacks[0].Outputs[?OutputKey=='ArtifactBucketName'].OutputValue" --output text)
+          ARTIFACT_BUCKET=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ArtifactBucketName'].OutputValue" --output text)
           echo "Using artifact bucket: $ARTIFACT_BUCKET"
           
           # Upload the ZIP file to S3
@@ -291,8 +291,8 @@ jobs:
 
       - name: Trigger CodePipeline Execution
         run: |
-          # Use the known pipeline name instead of dynamic lookup
-          PIPELINE_NAME="java-full-stack-Pipeline"
+          # Use the pipeline name from CloudFormation output instead of a hardcoded name.
+          PIPELINE_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='CodePipelineName'].OutputValue" --output text)
           echo "Starting pipeline: $PIPELINE_NAME"
           
           # Manually start the pipeline after uploading artifacts
