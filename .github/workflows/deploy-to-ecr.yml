@@ -119,42 +119,66 @@ jobs:
           AWS_REGION: eu-west-1
         run: |
           echo "Running database migrations..."
-          
+
           # Get infrastructure details from CloudFormation outputs
           SUBNET1=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet1Id'].OutputValue" --output text)
           SUBNET2=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet2Id'].OutputValue" --output text)
           SECURITY_GROUP=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSSecurityGroupId'].OutputValue" --output text)
           CLUSTER_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSClusterName'].OutputValue" --output text)
-          
+
           # For Fargate, use launch type instead of worrying about container instances
           echo "Running migration task on Fargate..."
           MIGRATION_TASK=$(aws ecs run-task \
-          --cluster $CLUSTER_NAME \
-          --task-definition java-full-stack-migrations \
-          --launch-type FARGATE \
-          --network-configuration "awsvpcConfiguration={subnets=[$SUBNET1,$SUBNET2],securityGroups=[$SECURITY_GROUP],assignPublicIp=DISABLED}" \
-          --query 'tasks[0].taskArn' \
-          --output text)
-          
+            --cluster $CLUSTER_NAME \
+            --task-definition java-full-stack-migrations \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNET1,$SUBNET2],securityGroups=[$SECURITY_GROUP],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
           if [ $? -ne 0 ]; then
-          echo "❌ Failed to start migration task"
-          exit 1
+            echo "❌ Failed to start migration task"
+            exit 1
           fi
-          
-          echo "Migration task started: $MIGRATION_TASK"
-          
+
           echo "Migration task started: $MIGRATION_TASK"
 
-          # Wait for migration to complete (timeout after 10 minutes)
+          # Wait for migration to complete with a custom timeout implementation
           echo "Waiting for migration to complete..."
-          aws ecs wait tasks-stopped \
-            --cluster $CLUSTER_NAME \
-            --tasks $MIGRATION_TASK \
-            --max-attempts 60 \
-            --delay 10
+          MAX_ATTEMPTS=60
+          DELAY=10
+          ATTEMPT=0
+          TASK_STATUS=""
+
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            TASK_STATUS=$(aws ecs describe-tasks --cluster $CLUSTER_NAME --tasks $MIGRATION_TASK --query 'tasks[0].lastStatus' --output text)
+            EXIT_CODE=$(aws ecs describe-tasks --cluster $CLUSTER_NAME --tasks $MIGRATION_TASK --query 'tasks[0].containers[0].exitCode' --output text)
+
+            echo "Attempt $((ATTEMPT+1))/$MAX_ATTEMPTS - Task status: $TASK_STATUS, Exit code: $EXIT_CODE"
+
+            # Check if task has stopped
+            if [ "$TASK_STATUS" = "STOPPED" ]; then
+              break
+            fi
+
+            # Check if task failed to start
+            if [ "$TASK_STATUS" = "FAILED" ] || [ "$TASK_STATUS" = "DELETED" ]; then
+              echo "❌ Task failed with status: $TASK_STATUS"
+              exit 1
+            fi
+
+            # Wait before next check
+            sleep $DELAY
+            ATTEMPT=$((ATTEMPT+1))
+          done
+
+          # Check if we timed out
+          if [ $ATTEMPT -eq $MAX_ATTEMPTS ] && [ "$TASK_STATUS" != "STOPPED" ]; then
+            echo "❌ Migration timed out after $((MAX_ATTEMPTS * DELAY)) seconds. Last status: $TASK_STATUS"
+            exit 1
+          fi
 
           # Check migration result
-          TASK_STATUS=$(aws ecs describe-tasks --cluster $CLUSTER_NAME --tasks $MIGRATION_TASK --query 'tasks[0].lastStatus' --output text)
           EXIT_CODE=$(aws ecs describe-tasks --cluster $CLUSTER_NAME --tasks $MIGRATION_TASK --query 'tasks[0].containers[0].exitCode' --output text)
 
           if [ "$EXIT_CODE" != "0" ]; then
@@ -170,7 +194,6 @@ jobs:
           fi
 
           echo "✅ Database migrations completed successfully!"
-
       - name: Generate Deployment Artifacts
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
