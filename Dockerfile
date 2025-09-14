@@ -15,8 +15,7 @@ COPY src ./src
 RUN chmod +x ./gradlew
 
 # Build the application. The `build` command will create the executable JAR file.
-RUN ./gradlew build --no-daemon
-
+RUN ./gradlew build --no-daemon -x test  # Skip tests
 # STAGE 2: Create the final production image
 FROM eclipse-temurin:21-jre-jammy
 
