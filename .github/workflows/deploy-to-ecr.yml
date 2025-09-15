@@ -60,7 +60,7 @@ jobs:
           DB_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='DBSecretArn'].OutputValue" --output text)
           TASK_EXEC_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskExecutionRoleArn'].OutputValue" --output text)
           TASK_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskRoleArn'].OutputValue" --output text)
-
+          
           # Create migration task definition JSON
           cat > migration-taskdef.json << EOF
           {
@@ -94,7 +94,7 @@ jobs:
                 "secrets": [
                   {
                     "name": "DB_PASSWORD",
-                    "valueFrom": "$DB_SECRET_ARN"
+                    "valueFrom": "${DB_SECRET_ARN}:password::"
                   }
                 ],
                 "logConfiguration": {
@@ -109,7 +109,7 @@ jobs:
             ]
           }
           EOF
-
+          
           # Register the task definition
           aws ecs register-task-definition --cli-input-json file://migration-taskdef.json
           echo "Migration task definition created successfully"
@@ -274,7 +274,8 @@ jobs:
                 "secrets": [
                   {
                     "name": "SPRING_DATASOURCE_PASSWORD",
-                    "valueFrom": "$DB_SECRET_ARN"
+                    "valueFrom": "${DB_SECRET_ARN}:password::"
+
                   }
                 ],
                 "healthCheck": {
