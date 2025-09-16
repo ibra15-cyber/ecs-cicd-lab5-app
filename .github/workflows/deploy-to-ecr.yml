@@ -289,6 +289,9 @@ jobs:
 
       - name: Run database migrations
         run: |
+            # Set the application name, as it's not automatically passed to this step's context.
+            APP_NAME="java-full-stack"
+            
             # The database endpoint is an output from CloudFormation, so we need to get it first.
             # We use `jq` to parse the output and store it in an environment variable.
             RDS_INSTANCE_ENDPOINT=$(aws cloudformation describe-stacks --stack-name $APP_NAME-infrastructure --query "Stacks[0].Outputs[?OutputKey=='RDSInstanceEndpoint'].OutputValue" --output text)
