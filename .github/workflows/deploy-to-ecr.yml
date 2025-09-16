@@ -117,7 +117,6 @@ jobs:
       - name: Debug - Verify Task Definition
         run: |
           aws ecs describe-task-definition --task-definition java-full-stack-migrations --query 'taskDefinition.containerDefinitions[0]'
-
       - name: Run Database Migrations
         env:
           AWS_REGION: eu-west-1
