@@ -118,77 +118,6 @@ jobs:
         run: |
           aws ecs describe-task-definition --task-definition java-full-stack-migrations --query 'taskDefinition.containerDefinitions[0]'
 
-      - name: Run Database Migrations
-        env:
-          AWS_REGION: eu-west-1
-        run: |
-          echo "Running database migrations..."
-
-          # Get infrastructure details from CloudFormation outputs
-          SUBNET1=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet1Id'].OutputValue" --output text)
-          SUBNET2=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet2Id'].OutputValue" --output text)
-          SECURITY_GROUP=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSSecurityGroupId'].OutputValue" --output text)
-          CLUSTER_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSClusterName'].OutputValue" --output text)
-
-          echo "Running migration task on Fargate..."
-          MIGRATION_TASK=$(aws ecs run-task \
-            --cluster $CLUSTER_NAME \
-            --task-definition java-full-stack-migrations \
-            --launch-type FARGATE \
-            --network-configuration "awsvpcConfiguration={subnets=[$SUBNET1,$SUBNET2],securityGroups=[$SECURITY_GROUP],assignPublicIp=DISABLED}" \
-            --query 'tasks[0].taskArn' \
-            --output text)
-
-          echo "Migration task started: $MIGRATION_TASK"
-
-          # Wait for task completion with detailed debugging
-          MAX_ATTEMPTS=30
-          DELAY=10
-          ATTEMPT=0
-          TASK_STATUS=""
-
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-            TASK_DETAILS=$(aws ecs describe-tasks --cluster $CLUSTER_NAME --tasks $MIGRATION_TASK)
-            TASK_STATUS=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].lastStatus')
-            EXIT_CODE=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].containers[0].exitCode')
-            STOPPED_REASON=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].stoppedReason // "N/A"')
-
-            echo "Attempt $((ATTEMPT+1))/$MAX_ATTEMPTS - Status: $TASK_STATUS, Exit: $EXIT_CODE, Reason: $STOPPED_REASON"
-
-            # Check if task has stopped
-            if [ "$TASK_STATUS" = "STOPPED" ]; then
-              break
-            fi
-
-            sleep $DELAY
-            ATTEMPT=$((ATTEMPT+1))
-          done
-
-          # Get final task details
-          TASK_DETAILS=$(aws ecs describe-tasks --cluster $CLUSTER_NAME --tasks $MIGRATION_TASK)
-          STOPPED_REASON=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].stoppedReason // "N/A"')
-          EXIT_CODE=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].containers[0].exitCode')
-
-          echo "Final task status:"
-          echo "$TASK_DETAILS" | jq '.tasks[0]'
-
-          if [ "$EXIT_CODE" != "0" ] && [ "$EXIT_CODE" != "null" ]; then
-            echo "❌ Migration failed with exit code: $EXIT_CODE"
-            echo "Stopped reason: $STOPPED_REASON"
-
-            # Get logs from CloudWatch
-            LOG_STREAM=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].containers[0].logStreamName')
-            if [ "$LOG_STREAM" != "null" ] && [ "$LOG_STREAM" != "None" ]; then
-              echo "Migration logs:"
-              aws logs get-log-events --log-group-name /ecs/java-full-stack --log-stream-name "$LOG_STREAM" --query 'events[].message' --output text
-            fi
-            exit 1
-          elif [ "$EXIT_CODE" = "null" ]; then
-            echo "❌ Task failed during provisioning: $STOPPED_REASON"
-            exit 1
-          else
-            echo "✅ Database migrations completed successfully!"
-          fi
       - name: Generate Deployment Artifacts
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -326,6 +255,109 @@ jobs:
           # Manually start the pipeline after uploading artifacts
           aws codepipeline start-pipeline-execution --name $PIPELINE_NAME
           echo "Pipeline execution triggered"
+
+      - name: Wait for CodePipeline to complete
+        run: |
+          PIPELINE_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='CodePipelineName'].OutputValue" --output text)
+          echo "Waiting for pipeline: $PIPELINE_NAME to complete..."
+          
+          # Wait for pipeline execution to complete
+          MAX_WAIT_MINUTES=30
+          WAIT_INTERVAL=30
+          TOTAL_WAIT=0
+          
+          while [ $TOTAL_WAIT -lt $((MAX_WAIT_MINUTES * 60)) ]; do
+            STATUS=$(aws codepipeline list-pipeline-executions --pipeline-name $PIPELINE_NAME --query 'pipelineExecutionSummaries[0].status' --output text)
+            echo "Pipeline status: $STATUS (waited $TOTAL_WAIT seconds)"
+          
+            if [ "$STATUS" = "Succeeded" ]; then
+              echo "✅ Pipeline completed successfully!"
+              break
+            elif [ "$STATUS" = "Failed" ]; then
+              echo "❌ Pipeline failed!"
+              exit 1
+            fi
+          
+            sleep $WAIT_INTERVAL
+            TOTAL_WAIT=$((TOTAL_WAIT + WAIT_INTERVAL))
+          done
+          
+          if [ $TOTAL_WAIT -ge $((MAX_WAIT_MINUTES * 60)) ]; then
+            echo "⚠️  Pipeline timed out after $MAX_WAIT_MINUTES minutes"
+            exit 1
+          fi
+
+      - name: Run Database Migrations
+        env:
+          AWS_REGION: eu-west-1
+        run: |
+          echo "Running database migrations after successful deployment..."
+
+          # Get infrastructure details from CloudFormation outputs
+          SUBNET1=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet1Id'].OutputValue" --output text)
+          SUBNET2=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet2Id'].OutputValue" --output text)
+          SECURITY_GROUP=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSSecurityGroupId'].OutputValue" --output text)
+          CLUSTER_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSClusterName'].OutputValue" --output text)
+
+          echo "Running migration task on Fargate..."
+          MIGRATION_TASK=$(aws ecs run-task \
+            --cluster $CLUSTER_NAME \
+            --task-definition java-full-stack-migrations \
+            --launch-type FARGATE \
+            --network-configuration "awsvpcConfiguration={subnets=[$SUBNET1,$SUBNET2],securityGroups=[$SECURITY_GROUP],assignPublicIp=DISABLED}" \
+            --query 'tasks[0].taskArn' \
+            --output text)
+
+          echo "Migration task started: $MIGRATION_TASK"
+
+          # Wait for task completion with detailed debugging
+          MAX_ATTEMPTS=30
+          DELAY=10
+          ATTEMPT=0
+          TASK_STATUS=""
+
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            TASK_DETAILS=$(aws ecs describe-tasks --cluster $CLUSTER_NAME --tasks $MIGRATION_TASK)
+            TASK_STATUS=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].lastStatus')
+            EXIT_CODE=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].containers[0].exitCode')
+            STOPPED_REASON=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].stoppedReason // "N/A"')
+
+            echo "Attempt $((ATTEMPT+1))/$MAX_ATTEMPTS - Status: $TASK_STATUS, Exit: $EXIT_CODE, Reason: $STOPPED_REASON"
+
+            # Check if task has stopped
+            if [ "$TASK_STATUS" = "STOPPED" ]; then
+              break
+            fi
+
+            sleep $DELAY
+            ATTEMPT=$((ATTEMPT+1))
+          done
+
+          # Get final task details
+          TASK_DETAILS=$(aws ecs describe-tasks --cluster $CLUSTER_NAME --tasks $MIGRATION_TASK)
+          STOPPED_REASON=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].stoppedReason // "N/A"')
+          EXIT_CODE=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].containers[0].exitCode')
+
+          echo "Final task status:"
+          echo "$TASK_DETAILS" | jq '.tasks[0]'
+
+          if [ "$EXIT_CODE" != "0" ] && [ "$EXIT_CODE" != "null" ]; then
+            echo "❌ Migration failed with exit code: $EXIT_CODE"
+            echo "Stopped reason: $STOPPED_REASON"
+
+            # Get logs from CloudWatch
+            LOG_STREAM=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].containers[0].logStreamName')
+            if [ "$LOG_STREAM" != "null" ] && [ "$LOG_STREAM" != "None" ]; then
+              echo "Migration logs:"
+              aws logs get-log-events --log-group-name /ecs/java-full-stack --log-stream-name "$LOG_STREAM" --query 'events[].message' --output text
+            fi
+            exit 1
+          elif [ "$EXIT_CODE" = "null" ]; then
+            echo "❌ Task failed during provisioning: $STOPPED_REASON"
+            exit 1
+          else
+            echo "✅ Database migrations completed successfully!"
+          fi
 
       - name: Copy static resources
         run: |
