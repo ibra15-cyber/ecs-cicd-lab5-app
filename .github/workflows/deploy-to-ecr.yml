@@ -49,7 +49,135 @@ jobs:
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
-      - name: Create Migration Task Definition
+      - name: Generate Deployment Artifacts
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
+          AWS_REGION: eu-west-1
+        run: |
+          # Get the latest task definition using family name
+          echo "Searching for latest task definition for family: java-full-stack-Task"
+          TASK_DEF_ARN=$(aws ecs describe-task-definition --task-definition java-full-stack-Task --query 'taskDefinition.taskDefinitionArn' --output text 2>/dev/null || echo "")
+          
+          if [ -z "$TASK_DEF_ARN" ]; then
+            echo "No existing task definition found. Will create a new one."
+            TASK_DEF_ARN="arn:aws:ecs:$AWS_REGION:$(aws sts get-caller-identity --query Account --output text):task-definition/java-full-stack-Task"
+          else
+            echo "Found existing task definition: $TASK_DEF_ARN"
+          fi
+          
+          # Get values from CloudFormation outputs
+          DB_ENDPOINT=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='RDSInstanceEndpoint'].OutputValue" --output text)
+          DB_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='DBSecretArn'].OutputValue" --output text)
+          S3_BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='S3BucketName'].OutputValue" --output text)
+          TASK_EXEC_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskExecutionRoleArn'].OutputValue" --output text)
+          TASK_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskRoleArn'].OutputValue" --output text)
+          
+          echo "DB Endpoint: $DB_ENDPOINT"
+          echo "DB Secret ARN: $DB_SECRET_ARN"
+          echo "S3 Bucket Name: $S3_BUCKET_NAME"
+          echo "Task Execution Role ARN: $TASK_EXEC_ROLE_ARN"
+          echo "Task Role ARN: $TASK_ROLE_ARN"
+          
+          # Create appspec.yml with the task definition ARN
+          cat > appspec.yml << EOF
+          version: 0.0
+          Resources:
+            - TargetService:
+                Type: AWS::ECS::Service
+                Properties:
+                  TaskDefinition: "$TASK_DEF_ARN"
+                  LoadBalancerInfo:
+                    ContainerName: "java-full-stack-Container"
+                    ContainerPort: 8080
+          EOF
+
+          # Create taskdef.json
+          cat > taskdef.json << EOF
+          {
+            "family": "java-full-stack-Task",
+            "networkMode": "awsvpc",
+            "requiresCompatibilities": ["FARGATE"],
+            "cpu": "256",
+            "memory": "512",
+            "executionRoleArn": "$TASK_EXEC_ROLE_ARN",
+            "taskRoleArn": "$TASK_ROLE_ARN",
+            "containerDefinitions": [
+              {
+                "name": "java-full-stack-Container",
+                "image": "$ECR_REGISTRY/$ECR_REPOSITORY:latest",
+                "essential": true,
+                "portMappings": [
+                  {
+                    "containerPort": 8080,
+                    "protocol": "tcp"
+                  }
+                ],
+                "environment": [
+                  {
+                    "name": "SPRING_DATASOURCE_URL",
+                    "value": "jdbc:postgresql://${DB_ENDPOINT}/photogallery"
+                  },
+                  {
+                    "name": "SPRING_DATASOURCE_USERNAME",
+                    "value": "postgres"
+                  },
+                  {
+                    "name": "S3_BUCKET_NAME",
+                    "value": "$S3_BUCKET_NAME"
+                  },
+                  {
+                    "name": "AWS_REGION",
+                    "value": "eu-west-1"
+                  }
+                ],
+                "secrets": [
+                  {
+                    "name": "SPRING_DATASOURCE_PASSWORD",
+                    "valueFrom": "${DB_SECRET_ARN}:password::"
+
+                  }
+                ],
+                "healthCheck": {
+                  "command": ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"],
+                  "interval": 30,
+                  "timeout": 10,
+                  "retries": 3,
+                  "startPeriod": 60
+                },
+                "logConfiguration": {
+                  "logDriver": "awslogs",
+                  "options": {
+                    "awslogs-group": "/ecs/java-full-stack",
+                    "awslogs-region": "$AWS_REGION",
+                    "awslogs-stream-prefix": "ecs"
+                  }
+                }
+              }
+            ]
+          }
+          EOF
+
+          # Create the ZIP file that CodeDeploy expects
+          zip -r deployment-artifacts.zip appspec.yml taskdef.json
+
+          echo "Generated deployment-artifacts.zip contents:"
+          unzip -l deployment-artifacts.zip
+
+      - name: Upload Deployment Artifacts to S3
+        run: |
+          # Get the artifact bucket name from CloudFormation
+          ARTIFACT_BUCKET=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ArtifactBucketName'].OutputValue" --output text)
+          echo "Using artifact bucket: $ARTIFACT_BUCKET"
+          
+          # Upload the ZIP file to S3
+          aws s3 cp deployment-artifacts.zip s3://$ARTIFACT_BUCKET/deployment-artifacts/latest.zip
+          
+          # Also upload individual files for reference
+          aws s3 cp appspec.yml s3://$ARTIFACT_BUCKET/deployment-artifacts/
+          aws s3 cp taskdef.json s3://$ARTIFACT_BUCKET/deployment-artifacts/
+          
+            - name: Create Migration Task Definition
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
@@ -188,133 +316,6 @@ jobs:
           else
             echo "✅ Database migrations completed successfully!"
           fi
-      - name: Generate Deployment Artifacts
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
-          AWS_REGION: eu-west-1
-        run: |
-          # Get the latest task definition using family name
-          echo "Searching for latest task definition for family: java-full-stack-Task"
-          TASK_DEF_ARN=$(aws ecs describe-task-definition --task-definition java-full-stack-Task --query 'taskDefinition.taskDefinitionArn' --output text 2>/dev/null || echo "")
-          
-          if [ -z "$TASK_DEF_ARN" ]; then
-            echo "No existing task definition found. Will create a new one."
-            TASK_DEF_ARN="arn:aws:ecs:$AWS_REGION:$(aws sts get-caller-identity --query Account --output text):task-definition/java-full-stack-Task"
-          else
-            echo "Found existing task definition: $TASK_DEF_ARN"
-          fi
-          
-          # Get values from CloudFormation outputs
-          DB_ENDPOINT=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='RDSInstanceEndpoint'].OutputValue" --output text)
-          DB_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='DBSecretArn'].OutputValue" --output text)
-          S3_BUCKET_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='S3BucketName'].OutputValue" --output text)
-          TASK_EXEC_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskExecutionRoleArn'].OutputValue" --output text)
-          TASK_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskRoleArn'].OutputValue" --output text)
-          
-          echo "DB Endpoint: $DB_ENDPOINT"
-          echo "DB Secret ARN: $DB_SECRET_ARN"
-          echo "S3 Bucket Name: $S3_BUCKET_NAME"
-          echo "Task Execution Role ARN: $TASK_EXEC_ROLE_ARN"
-          echo "Task Role ARN: $TASK_ROLE_ARN"
-          
-          # Create appspec.yml with the task definition ARN
-          cat > appspec.yml << EOF
-          version: 0.0
-          Resources:
-            - TargetService:
-                Type: AWS::ECS::Service
-                Properties:
-                  TaskDefinition: "$TASK_DEF_ARN"
-                  LoadBalancerInfo:
-                    ContainerName: "java-full-stack-Container"
-                    ContainerPort: 8080
-          EOF
-
-          # Create taskdef.json
-          cat > taskdef.json << EOF
-          {
-            "family": "java-full-stack-Task",
-            "networkMode": "awsvpc",
-            "requiresCompatibilities": ["FARGATE"],
-            "cpu": "256",
-            "memory": "512",
-            "executionRoleArn": "$TASK_EXEC_ROLE_ARN",
-            "taskRoleArn": "$TASK_ROLE_ARN",
-            "containerDefinitions": [
-              {
-                "name": "java-full-stack-Container",
-                "image": "$ECR_REGISTRY/$ECR_REPOSITORY:latest",
-                "essential": true,
-                "portMappings": [
-                  {
-                    "containerPort": 8080,
-                    "protocol": "tcp"
-                  }
-                ],
-                "environment": [
-                  {
-                    "name": "SPRING_DATASOURCE_URL",
-                    "value": "jdbc:postgresql://${DB_ENDPOINT}/photogallery"
-                  },
-                  {
-                    "name": "SPRING_DATASOURCE_USERNAME",
-                    "value": "postgres"
-                  },
-                  {
-                    "name": "S3_BUCKET_NAME",
-                    "value": "$S3_BUCKET_NAME"
-                  },
-                  {
-                    "name": "AWS_REGION",
-                    "value": "eu-west-1"
-                  }
-                ],
-                "secrets": [
-                  {
-                    "name": "SPRING_DATASOURCE_PASSWORD",
-                    "valueFrom": "${DB_SECRET_ARN}:password::"
-
-                  }
-                ],
-                "healthCheck": {
-                  "command": ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"],
-                  "interval": 30,
-                  "timeout": 10,
-                  "retries": 3,
-                  "startPeriod": 60
-                },
-                "logConfiguration": {
-                  "logDriver": "awslogs",
-                  "options": {
-                    "awslogs-group": "/ecs/java-full-stack",
-                    "awslogs-region": "$AWS_REGION",
-                    "awslogs-stream-prefix": "ecs"
-                  }
-                }
-              }
-            ]
-          }
-          EOF
-
-          # Create the ZIP file that CodeDeploy expects
-          zip -r deployment-artifacts.zip appspec.yml taskdef.json
-
-          echo "Generated deployment-artifacts.zip contents:"
-          unzip -l deployment-artifacts.zip
-
-      - name: Upload Deployment Artifacts to S3
-        run: |
-          # Get the artifact bucket name from CloudFormation
-          ARTIFACT_BUCKET=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ArtifactBucketName'].OutputValue" --output text)
-          echo "Using artifact bucket: $ARTIFACT_BUCKET"
-          
-          # Upload the ZIP file to S3
-          aws s3 cp deployment-artifacts.zip s3://$ARTIFACT_BUCKET/deployment-artifacts/latest.zip
-          
-          # Also upload individual files for reference
-          aws s3 cp appspec.yml s3://$ARTIFACT_BUCKET/deployment-artifacts/
-          aws s3 cp taskdef.json s3://$ARTIFACT_BUCKET/deployment-artifacts/
 
       - name: Trigger CodePipeline Execution
         run: |
