@@ -33,8 +33,6 @@ COPY --from=builder /app/build/libs/*.jar app.jar
 COPY src/main/resources/db/migration/ /app/db/migration/
 
 # Copy migration and utility scripts
-RUN apk update && apk add postgresql-client
-
 COPY migrate.sh ./
 COPY wait-for-db.sh ./
 RUN chmod +x migrate.sh wait-for-db.sh

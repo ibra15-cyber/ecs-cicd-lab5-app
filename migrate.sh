@@ -1,10 +1,14 @@
 #!/bin/bash
 set -e
 
-echo "Starting database migrations..."
+DB_HOST="$1"
 
-# Use wait script to ensure database is ready
-/app/wait-for-db.sh $DB_HOST echo "Database is ready. Starting migrations..."
+echo "Waiting for PostgreSQL..."
+until pg_isready -h "$DB_HOST" -p 5432 -U "$DB_USER" -d "$DB_NAME"; do
+  >&2 echo "PostgreSQL is unavailable - sleeping"
+  sleep 2
+done
+>&2 echo "PostgreSQL is up - starting migrations..."
 
 # Download Flyway command-line tool (since it's not in the JAR)
 echo "Downloading Flyway..."
