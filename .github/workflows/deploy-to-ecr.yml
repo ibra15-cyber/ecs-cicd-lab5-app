@@ -290,7 +290,7 @@ jobs:
       - name: Run database migrations
         run: |
             # Set the application name to match your CloudFormation stack name.
-            APP_NAME="ibra-cfn-infrastructure"
+            APP_NAME="ibra-cfn"
             
             # The database endpoint is an output from CloudFormation, so we need to get it first.
             # We use `jq` to parse the output and store it in an environment variable.
