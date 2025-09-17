@@ -287,43 +287,61 @@ jobs:
 #            exit 1
 #          fi
 
-      - name: Run database migrations
+      - name: Run Database Migrations
+        env:
+            AWS_REGION: eu-west-1
         run: |
-            # Set the application name to match your CloudFormation stack name.
-            APP_NAME="ibra-cfn"
+            echo "Running database migrations after successful deployment..."
             
-            # The database endpoint is an output from CloudFormation, so we need to get it first.
-            # We use `jq` to parse the output and store it in an environment variable.
-            RDS_INSTANCE_ENDPOINT=$(aws cloudformation describe-stacks --stack-name $APP_NAME-infrastructure --query "Stacks[0].Outputs[?OutputKey=='RDSInstanceEndpoint'].OutputValue" --output text)
+            # Get infrastructure details from CloudFormation outputs
+            SUBNET1=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet1Id'].OutputValue" --output text)
+            SUBNET2=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet2Id'].OutputValue" --output text)
+            SECURITY_GROUP=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSSecurityGroupId'].OutputValue" --output text)
+            CLUSTER_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSClusterName'].OutputValue" --output text)
+            RDS_INSTANCE_ENDPOINT=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='RDSInstanceEndpoint'].OutputValue" --output text)
             
-            # Define the command to run the migrations script
-            # The `command` in the container override must be a JSON array of strings.
-            # The first argument is the DB host, which we get from the CloudFormation output.
+            # Define the command to run the migrations script with the DB host
             MIGRATE_COMMAND="/app/migrate.sh $RDS_INSTANCE_ENDPOINT"
             
-            # Run the migration task on Fargate
-            TASK_DETAILS=$(aws ecs run-task \
-              --cluster "$CLUSTER_NAME" \
-              --task-definition "$TASK_FAMILY_NAME" \
+            echo "Running migration task on Fargate..."
+            MIGRATION_TASK=$(aws ecs run-task \
+              --cluster $CLUSTER_NAME \
+              --task-definition java-full-stack-migrations \
               --launch-type FARGATE \
-              --network-configuration "awsvpcConfiguration={subnets=[$PRIVATE_SUBNET_1_ID,$PRIVATE_SUBNET_2_ID],securityGroups=[$MIGRATION_SG_ID],assignPublicIp=DISABLED}" \
-              --overrides "containerOverrides=[{name='$APP_NAME',command=['/bin/sh','-c','$MIGRATE_COMMAND']}]" \
-              --query 'tasks[0]' \
-              --output json)
+              --network-configuration "awsvpcConfiguration={subnets=[$SUBNET1,$SUBNET2],securityGroups=[$SECURITY_GROUP],assignPublicIp=DISABLED}" \
+              --overrides "containerOverrides=[{name='ibra-cfn',command=['/bin/sh','-c','$MIGRATE_COMMAND']}]" \
+              --query 'tasks[0].taskArn' \
+              --output text)
             
-            # Wait for the migration task to stop and get its exit code.
-            TASK_ARN=$(echo "$TASK_DETAILS" | jq -r '.taskArn')
-            echo "Waiting for migration task to complete: $TASK_ARN"
-            aws ecs wait tasks-stopped --tasks "$TASK_ARN" --cluster "$CLUSTER_NAME"
+            echo "Migration task started: $MIGRATION_TASK"
             
-            TASK_DETAILS=$(aws ecs describe-tasks \
-              --cluster "$CLUSTER_NAME" \
-              --tasks "$TASK_ARN" \
-              --query 'tasks[0]' \
-              --output json)
+            # Wait for task completion with detailed debugging
+            MAX_ATTEMPTS=30
+            DELAY=10
+            ATTEMPT=0
+            TASK_STATUS=""
             
-            STOPPED_REASON=$(echo "$TASK_DETAILS" | jq -r '.stoppedReason // "N/A"')
-            EXIT_CODE=$(echo "$TASK_DETAILS" | jq -r '.containers[0].exitCode')
+            while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+              TASK_DETAILS=$(aws ecs describe-tasks --cluster $CLUSTER_NAME --tasks $MIGRATION_TASK)
+              TASK_STATUS=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].lastStatus')
+              EXIT_CODE=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].containers[0].exitCode')
+              STOPPED_REASON=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].stoppedReason // "N/A"')
+            
+              echo "Attempt $((ATTEMPT+1))/$MAX_ATTEMPTS - Status: $TASK_STATUS, Exit: $EXIT_CODE, Reason: $STOPPED_REASON"
+            
+              # Check if task has stopped
+              if [ "$TASK_STATUS" = "STOPPED" ]; then
+                break
+              fi
+            
+              sleep $DELAY
+              ATTEMPT=$((ATTEMPT+1))
+            done
+            
+            # Get final task details
+            TASK_DETAILS=$(aws ecs describe-tasks --cluster $CLUSTER_NAME --tasks $MIGRATION_TASK)
+            STOPPED_REASON=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].stoppedReason // "N/A"')
+            EXIT_CODE=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].containers[0].exitCode')
             
             echo "Final task status:"
             echo "$TASK_DETAILS" | jq '.tasks[0]'
@@ -333,7 +351,7 @@ jobs:
               echo "Stopped reason: $STOPPED_REASON"
             
               # Get logs from CloudWatch
-              LOG_STREAM=$(echo "$TASK_DETAILS" | jq -r '.containers[0].logStreamName')
+              LOG_STREAM=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].containers[0].logStreamName')
               if [ "$LOG_STREAM" != "null" ] && [ "$LOG_STREAM" != "None" ]; then
                 echo "Migration logs:"
                 aws logs get-log-events --log-group-name /ecs/java-full-stack --log-stream-name "$LOG_STREAM" --query 'events[].message' --output text
@@ -345,7 +363,6 @@ jobs:
             else
               echo "✅ Database migrations completed successfully!"
             fi
-
       - name: Copy static resources
         run: |
           # Copy HTML, CSS, and JS files to the build directory
