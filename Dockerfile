@@ -23,7 +23,7 @@ WORKDIR /app
 
 # Install PostgreSQL client for database health checks and migrations
 RUN apt-get update && \
-    apt-get install -y postgresql-client curl && \
+    apt-get install -y postgresql-client && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy the executable JAR from the 'builder' stage
@@ -36,6 +36,9 @@ COPY src/main/resources/db/migration/ /app/db/migration/
 COPY migrate.sh ./
 COPY wait-for-db.sh ./
 RUN chmod +x migrate.sh wait-for-db.sh
+
+# Copy Flyway binary from the build context
+COPY flyway-9.22.0 /app/flyway-9.22.0
 
 # Create directory for static resources
 RUN mkdir -p /app/static

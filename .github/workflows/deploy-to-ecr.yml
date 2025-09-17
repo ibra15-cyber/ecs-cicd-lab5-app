@@ -37,6 +37,13 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Download Flyway CLI
+        run: |
+          FLYWAY_VERSION="9.22.0"
+          curl -L https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/$FLYWAY_VERSION/flyway-commandline-$FLYWAY_VERSION-linux-x64.tar.gz -o flyway.tar.gz
+          tar -xzf flyway.tar.gz
+          rm flyway.tar.gz
+
       - name: Build, tag, and push image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
@@ -256,36 +263,36 @@ jobs:
           aws codepipeline start-pipeline-execution --name $PIPELINE_NAME
           echo "Pipeline execution triggered"
 
-#      - name: Wait for CodePipeline to complete
-#        run: |
-#          PIPELINE_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='CodePipelineName'].OutputValue" --output text)
-#          echo "Waiting for pipeline: $PIPELINE_NAME to complete..."
-#
-#          # Wait for pipeline execution to complete
-#          MAX_WAIT_MINUTES=30
-#          WAIT_INTERVAL=30
-#          TOTAL_WAIT=0
-#
-#          while [ $TOTAL_WAIT -lt $((MAX_WAIT_MINUTES * 60)) ]; do
-#            STATUS=$(aws codepipeline list-pipeline-executions --pipeline-name $PIPELINE_NAME --query 'pipelineExecutionSummaries[0].status' --output text)
-#            echo "Pipeline status: $STATUS (waited $TOTAL_WAIT seconds)"
-#
-#            if [ "$STATUS" = "Succeeded" ]; then
-#              echo "✅ Pipeline completed successfully!"
-#              break
-#            elif [ "$STATUS" = "Failed" ]; then
-#              echo "❌ Pipeline failed!"
-#              exit 1
-#            fi
-#
-#            sleep $WAIT_INTERVAL
-#            TOTAL_WAIT=$((TOTAL_WAIT + WAIT_INTERVAL))
-#          done
-#
-#          if [ $TOTAL_WAIT -ge $((MAX_WAIT_MINUTES * 60)) ]; then
-#            echo "⚠️  Pipeline timed out after $MAX_WAIT_MINUTES minutes"
-#            exit 1
-#          fi
+      #      - name: Wait for CodePipeline to complete
+      #        run: |
+      #          PIPELINE_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='CodePipelineName'].OutputValue" --output text)
+      #          echo "Waiting for pipeline: $PIPELINE_NAME to complete..."
+      #
+      #          # Wait for pipeline execution to complete
+      #          MAX_WAIT_MINUTES=30
+      #          WAIT_INTERVAL=30
+      #          TOTAL_WAIT=0
+      #
+      #          while [ $TOTAL_WAIT -lt $((MAX_WAIT_MINUTES * 60)) ]; do
+      #            STATUS=$(aws codepipeline list-pipeline-executions --pipeline-name $PIPELINE_NAME --query 'pipelineExecutionSummaries[0].status' --output text)
+      #            echo "Pipeline status: $STATUS (waited $TOTAL_WAIT seconds)"
+      #
+      #            if [ "$STATUS" = "Succeeded" ]; then
+      #              echo "✅ Pipeline completed successfully!"
+      #              break
+      #            elif [ "$STATUS" = "Failed" ]; then
+      #              echo "❌ Pipeline failed!"
+      #              exit 1
+      #            fi
+      #
+      #            sleep $WAIT_INTERVAL
+      #            TOTAL_WAIT=$((TOTAL_WAIT + WAIT_INTERVAL))
+      #          done
+      #
+      #          if [ $TOTAL_WAIT -ge $((MAX_WAIT_MINUTES * 60)) ]; then
+      #            echo "⚠️  Pipeline timed out after $MAX_WAIT_MINUTES minutes"
+      #            exit 1
+      #          fi
 
       - name: Run Database Migrations
         env:
