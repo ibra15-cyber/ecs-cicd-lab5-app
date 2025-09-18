@@ -1,20 +1,85 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>ECS CICD Lab</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECS CICD Lab - Photo Gallery App</title>
     <link rel="stylesheet" href="/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📷</text></svg>">
 </head>
 <body>
 <div class="container">
-    <h1>Hello World!</h1>
-    <p><b>Name:</b> IBRAHIM ANYRAS SAFIANU</p>
-    <p><b>Lab:</b> ECS CICD!</p>
+    <h1>Photo Gallery App</h1>
+
+    <div style="margin: 2rem 0;">
+        <p><strong>Developer:</strong> IBRAHIM ANYRAS SAFIANU</p>
+        <p><strong>Project:</strong> ECS CI/CD Photo Gallery Application</p>
+        <p style="color: var(--text-muted); font-size: 1rem; margin-top: 1rem;">
+            A modern, cloud-native photo gallery built with Spring Boot, deployed on AWS ECS with automated CI/CD pipeline.
+        </p>
+    </div>
 
     <hr>
 
-    <h2>Photo Gallery Application</h2>
-    <p><a href="/upload">Upload a Photo</a></p>
-    <p><a href="/gallery">View Photo Gallery</a></p>
+    <h2>🚀 Get Started</h2>
+    <p style="margin-bottom: 2rem;">Upload and manage your photos with our beautiful, responsive gallery interface.</p>
+
+    <div class="nav-links">
+        <a href="/upload" class="nav-link">
+            <span>📤</span>
+            Upload Photos
+        </a>
+        <a href="/gallery" class="nav-link">
+            <span>🖼️</span>
+            View Gallery
+        </a>
+    </div>
+
+    <div style="margin-top: 3rem; padding: 1.5rem; background: var(--surface-color); border-radius: 12px; text-align: left;">
+        <h3 style="margin-bottom: 1rem; color: var(--text-primary);">✨ Features</h3>
+        <ul style="list-style: none; padding: 0; color: var(--text-secondary);">
+            <li style="margin: 0.5rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: var(--success-color);">✓</span>
+                Secure cloud storage with AWS S3
+            </li>
+            <li style="margin: 0.5rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: var(--success-color);">✓</span>
+                Responsive grid layout for all devices
+            </li>
+            <li style="margin: 0.5rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: var(--success-color);">✓</span>
+                Modern dark theme with smooth animations
+            </li>
+            <li style="margin: 0.5rem 0; display: flex; align-items: center; gap: 0.5rem;">
+                <span style="color: var(--success-color);">✓</span>
+                Automated CI/CD deployment pipeline
+            </li>
+        </ul>
+    </div>
 </div>
+
+<script>
+    // Add subtle parallax effect to background
+    window.addEventListener('mousemove', (e) => {
+        const container = document.querySelector('.container');
+        const x = (e.clientX / window.innerWidth) * 100;
+        const y = (e.clientY / window.innerHeight) * 100;
+
+        document.body.style.backgroundPosition = `${x/10}px ${y/10}px, ${(100-x)/10}px ${(100-y)/10}px`;
+    });
+
+    // Add loading animation on page navigation
+    document.querySelectorAll('a[href^="/"]').forEach(link => {
+        link.addEventListener('click', (e) => {
+            const originalText = link.innerHTML;
+            link.innerHTML = '<span class="loading"></span> Loading...';
+
+            // Reset after a short delay if navigation fails
+            setTimeout(() => {
+                link.innerHTML = originalText;
+            }, 3000);
+        });
+    });
+</script>
 </body>
 </html>

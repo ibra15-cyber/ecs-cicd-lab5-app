@@ -1,26 +1,440 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Upload Photo</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Photo - ECS CICD Lab</title>
     <link rel="stylesheet" href="/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📤</text></svg>">
+    <style>
+        /* Enhanced upload-specific styles */
+        .upload-container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .upload-form {
+            background: var(--surface-color);
+            padding: 2.5rem;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .file-upload-area {
+            position: relative;
+            border: 3px dashed var(--border-color);
+            border-radius: 16px;
+            padding: 3rem 2rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            background: rgba(15, 23, 42, 0.3);
+            margin-bottom: 2rem;
+        }
+
+        .file-upload-area:hover,
+        .file-upload-area.dragover {
+            border-color: var(--primary-color);
+            background: rgba(99, 102, 241, 0.1);
+            transform: scale(1.02);
+        }
+
+        .file-upload-area.has-file {
+            border-color: var(--success-color);
+            background: rgba(16, 185, 129, 0.1);
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.7;
+            transition: all 0.3s ease;
+        }
+
+        .file-upload-area:hover .upload-icon {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+
+        .upload-text {
+            color: var(--text-secondary);
+            font-size: 1.125rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-subtext {
+            color: var(--text-muted);
+            font-size: 0.875rem;
+        }
+
+        #photoFile {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+        }
+
+        .file-preview {
+            display: none;
+            margin-top: 1.5rem;
+            text-align: center;
+        }
+
+        .file-preview img {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 12px;
+            box-shadow: var(--shadow-md);
+            object-fit: cover;
+        }
+
+        .file-info {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 8px;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        .description-field {
+            margin: 2rem 0;
+        }
+
+        .description-field label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .char-counter {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-align: right;
+            margin-top: 0.5rem;
+        }
+
+        .upload-button {
+            width: 100%;
+            padding: 1rem 2rem;
+            font-size: 1.125rem;
+            font-weight: 600;
+            background: var(--gradient-primary);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .upload-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .upload-button .loading-spinner {
+            display: none;
+        }
+
+        .upload-button.loading .loading-spinner {
+            display: inline-block;
+            margin-right: 0.5rem;
+        }
+
+        .progress-bar {
+            display: none;
+            width: 100%;
+            height: 4px;
+            background: var(--surface-color);
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 1rem;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: var(--gradient-primary);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+
+        .upload-success {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid var(--success-color);
+            border-radius: 12px;
+            margin-top: 2rem;
+            animation: fadeInUp 0.5s ease;
+        }
+
+        .success-icon {
+            font-size: 3rem;
+            color: var(--success-color);
+            margin-bottom: 1rem;
+        }
+
+        .upload-tips {
+            background: var(--surface-color);
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-top: 2rem;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .upload-tips h4 {
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .upload-tips ul {
+            list-style: none;
+            padding: 0;
+            color: var(--text-secondary);
+        }
+
+        .upload-tips li {
+            margin: 0.5rem 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .tip-icon {
+            color: var(--primary-color);
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .upload-form {
+                padding: 2rem 1.5rem;
+            }
+
+            .file-upload-area {
+                padding: 2rem 1rem;
+            }
+
+            .upload-icon {
+                font-size: 2.5rem;
+            }
+        }
+    </style>
 </head>
 <body>
-<div class="container">
-    <h1>Upload a Photo</h1>
-    <form id="uploadForm" enctype="multipart/form-data">
-        <input type="file" id="photoFile" accept="image/*" required>
-        <textarea id="photoDescription" placeholder="Photo description" required></textarea>
-        <button type="submit">Upload</button>
+<div class="container upload-container">
+    <h1>📤 Upload Photo</h1>
+    <p>Share your favorite moments with beautiful, high-quality images</p>
+
+    <form id="uploadForm" class="upload-form" enctype="multipart/form-data">
+        <div class="file-upload-area" id="fileUploadArea">
+            <div class="upload-icon">🖼️</div>
+            <div class="upload-text">Click to select or drag & drop your photo</div>
+            <div class="upload-subtext">Supports JPG, PNG, GIF up to 10MB</div>
+            <input type="file" id="photoFile" accept="image/*" required>
+        </div>
+
+        <div class="file-preview" id="filePreview">
+            <img id="previewImage" src="" alt="Preview">
+            <div class="file-info" id="fileInfo"></div>
+        </div>
+
+        <div class="description-field">
+            <label for="photoDescription">Description</label>
+            <textarea
+                    id="photoDescription"
+                    placeholder="Describe your photo... What makes this moment special?"
+                    maxlength="500"
+                    required
+            ></textarea>
+            <div class="char-counter">
+                <span id="charCount">0</span>/500 characters
+            </div>
+        </div>
+
+        <button type="submit" class="upload-button" id="uploadButton">
+            <span class="loading-spinner loading"></span>
+            <span class="button-text">Upload Photo</span>
+        </button>
+
+        <div class="progress-bar" id="progressBar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
     </form>
-    <a href="/gallery">View Gallery</a>
+
+    <div class="upload-success" id="uploadSuccess">
+        <div class="success-icon">✅</div>
+        <h3>Upload Successful!</h3>
+        <p>Your photo has been uploaded and is now available in the gallery.</p>
+    </div>
+
+    <div class="upload-tips">
+        <h4>📋 Upload Tips</h4>
+        <ul>
+            <li><span class="tip-icon">✨</span> Use high-resolution images for best quality</li>
+            <li><span class="tip-icon">📱</span> Mobile photos work great too!</li>
+            <li><span class="tip-icon">💡</span> Add descriptive captions to help organize your photos</li>
+            <li><span class="tip-icon">🚀</span> Files are securely stored in AWS S3</li>
+        </ul>
+    </div>
+
+    <div class="nav-links" style="margin-top: 2rem;">
+        <a href="/gallery" class="nav-link">
+            <span>🖼️</span>
+            View Gallery
+        </a>
+        <a href="/" class="nav-link">
+            <span>🏠</span>
+            Back to Home
+        </a>
+    </div>
 </div>
+
 <script>
-    document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+    const fileInput = document.getElementById('photoFile');
+    const fileUploadArea = document.getElementById('fileUploadArea');
+    const filePreview = document.getElementById('filePreview');
+    const previewImage = document.getElementById('previewImage');
+    const fileInfo = document.getElementById('fileInfo');
+    const descriptionField = document.getElementById('photoDescription');
+    const charCount = document.getElementById('charCount');
+    const uploadButton = document.getElementById('uploadButton');
+    const progressBar = document.getElementById('progressBar');
+    const progressFill = document.getElementById('progressFill');
+    const uploadSuccess = document.getElementById('uploadSuccess');
+    const uploadForm = document.getElementById('uploadForm');
+
+    // Drag and drop functionality
+    fileUploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        fileUploadArea.classList.add('dragover');
+    });
+
+    fileUploadArea.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        fileUploadArea.classList.remove('dragover');
+    });
+
+    fileUploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        fileUploadArea.classList.remove('dragover');
+
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            fileInput.files = files;
+            handleFileSelect();
+        }
+    });
+
+    // File input change
+    fileInput.addEventListener('change', handleFileSelect);
+
+    function handleFileSelect() {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            alert('Please select a valid image file (JPG, PNG, GIF)');
+            return;
+        }
+
+        // Validate file size (10MB limit)
+        const maxSize = 10 * 1024 * 1024; // 10MB
+        if (file.size > maxSize) {
+            alert('File size must be less than 10MB');
+            return;
+        }
+
+        // Update UI
+        fileUploadArea.classList.add('has-file');
+        fileUploadArea.querySelector('.upload-text').textContent = 'Photo selected!';
+        fileUploadArea.querySelector('.upload-subtext').textContent = file.name;
+        fileUploadArea.querySelector('.upload-icon').textContent = '✅';
+
+        // Show preview
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            previewImage.src = e.target.result;
+            filePreview.style.display = 'block';
+
+            // Show file info
+            const fileSize = (file.size / 1024 / 1024).toFixed(2);
+            fileInfo.innerHTML = `
+                    <strong>${file.name}</strong><br>
+                    Size: ${fileSize} MB | Type: ${file.type}
+                `;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // Character counter for description
+    descriptionField.addEventListener('input', () => {
+        const count = descriptionField.value.length;
+        charCount.textContent = count;
+
+        if (count > 450) {
+            charCount.style.color = '#ef4444';
+        } else if (count > 400) {
+            charCount.style.color = '#f59e0b';
+        } else {
+            charCount.style.color = 'var(--text-muted)';
+        }
+    });
+
+    // Form submission
+    uploadForm.addEventListener('submit', async (e) => {
         e.preventDefault();
 
+        const file = fileInput.files[0];
+        const description = descriptionField.value.trim();
+
+        if (!file || !description) {
+            alert('Please select a file and add a description');
+            return;
+        }
+
+        // Update UI to loading state
+        uploadButton.disabled = true;
+        uploadButton.classList.add('loading');
+        uploadButton.querySelector('.button-text').textContent = 'Uploading...';
+        progressBar.style.display = 'block';
+
+        // Simulate upload progress
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+            progress += Math.random() * 30;
+            if (progress > 90) progress = 90;
+            progressFill.style.width = progress + '%';
+        }, 200);
+
         const formData = new FormData();
-        formData.append('file', document.getElementById('photoFile').files[0]);
-        formData.append('description', document.getElementById('photoDescription').value);
+        formData.append('file', file);
+        formData.append('description', description);
 
         try {
             const response = await fetch('/api/photos/upload', {
@@ -28,15 +442,59 @@
                 body: formData
             });
 
+            clearInterval(progressInterval);
+            progressFill.style.width = '100%';
+
             if (response.ok) {
-                alert('Photo uploaded successfully!');
-                document.getElementById('uploadForm').reset();
+                // Success
+                setTimeout(() => {
+                    uploadForm.style.display = 'none';
+                    uploadSuccess.style.display = 'block';
+
+                    // Reset form after delay
+                    setTimeout(() => {
+                        resetForm();
+                    }, 3000);
+                }, 500);
             } else {
-                alert('Upload failed');
+                throw new Error('Upload failed');
             }
         } catch (error) {
             console.error('Error:', error);
+            clearInterval(progressInterval);
+            alert('Upload failed. Please try again.');
+            resetUploadState();
         }
+    });
+
+    function resetUploadState() {
+        uploadButton.disabled = false;
+        uploadButton.classList.remove('loading');
+        uploadButton.querySelector('.button-text').textContent = 'Upload Photo';
+        progressBar.style.display = 'none';
+        progressFill.style.width = '0%';
+    }
+
+    function resetForm() {
+        uploadForm.reset();
+        uploadForm.style.display = 'block';
+        uploadSuccess.style.display = 'none';
+        filePreview.style.display = 'none';
+        fileUploadArea.classList.remove('has-file');
+        fileUploadArea.querySelector('.upload-text').textContent = 'Click to select or drag & drop your photo';
+        fileUploadArea.querySelector('.upload-subtext').textContent = 'Supports JPG, PNG, GIF up to 10MB';
+        fileUploadArea.querySelector('.upload-icon').textContent = '🖼️';
+        charCount.textContent = '0';
+        charCount.style.color = 'var(--text-muted)';
+        resetUploadState();
+    }
+
+    // Add subtle parallax effect
+    window.addEventListener('mousemove', (e) => {
+        const x = (e.clientX / window.innerWidth) * 100;
+        const y = (e.clientY / window.innerHeight) * 100;
+
+        document.body.style.backgroundPosition = `${x/15}px ${y/15}px, ${(100-x)/15}px ${(100-y)/15}px`;
     });
 </script>
 </body>
