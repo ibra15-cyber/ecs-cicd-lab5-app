@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -e #exit if a command fails
 
 DB_HOST="$1"
 
