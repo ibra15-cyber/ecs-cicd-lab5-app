@@ -14,31 +14,19 @@ COPY src ./src
 # Make the Gradle wrapper script executable
 RUN chmod +x ./gradlew
 
-# Build the application. The `build` command will create the executable JAR file.
-RUN ./gradlew build --no-daemon -x test  # Skip tests
+# Build the application
+RUN ./gradlew build --no-daemon -x test
+
 # STAGE 2: Create the final production image
 FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
 
-# Install PostgreSQL client for database health checks and migrations
-RUN apt-get update && \
-    apt-get install -y postgresql-client && \
-    rm -rf /var/lib/apt/lists/*
-
 # Copy the executable JAR from the 'builder' stage
 COPY --from=builder /app/build/libs/*.jar app.jar
 
-# Copy migration scripts from source
+# Copy migration scripts (Flyway will auto-run these on startup)
 COPY src/main/resources/db/migration/ /app/db/migration/
-
-# Copy migration and utility scripts
-COPY migrate.sh ./
-COPY wait-for-db.sh ./
-RUN chmod +x migrate.sh wait-for-db.sh
-
-# Copy Flyway binary from the build context
-COPY flyway-9.22.0 /app/flyway-9.22.0
 
 # Create directory for static resources
 RUN mkdir -p /app/static
@@ -46,5 +34,5 @@ RUN mkdir -p /app/static
 # Expose the port the application listens on
 EXPOSE 8080
 
-# Define the command to run the application when the container starts
+# Flyway will automatically run migrations when the app starts
 CMD ["java", "-jar", "app.jar", "--spring.profiles.active=prod"]

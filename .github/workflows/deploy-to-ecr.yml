@@ -25,7 +25,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build with Gradle
-        run: ./gradlew build --no-daemon -x test  # Skip tests
+        run: ./gradlew build --no-daemon -x test
 
       - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -37,93 +37,13 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Download Flyway CLI
-        run: |
-          FLYWAY_VERSION="9.22.0"
-          curl -L https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/$FLYWAY_VERSION/flyway-commandline-$FLYWAY_VERSION-linux-x64.tar.gz -o flyway.tar.gz
-          tar -xzf flyway.tar.gz
-          rm flyway.tar.gz
-
       - name: Build, tag, and push image to Amazon ECR
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
         run: |
-          echo "ECR Registry: $ECR_REGISTRY"
-          echo "ECR Repository: $ECR_REPOSITORY" 
-          
-          # Build and push only latest tag
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
-
-      - name: Create Migration Task Definition
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
-          AWS_REGION: eu-west-1
-        run: |
-          # Get values from CloudFormation outputs instead of dynamic API calls
-          DB_ENDPOINT=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='RDSInstanceEndpoint'].OutputValue" --output text)
-          DB_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='DBSecretArn'].OutputValue" --output text)
-          TASK_EXEC_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskExecutionRoleArn'].OutputValue" --output text)
-          TASK_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskRoleArn'].OutputValue" --output text)
-          
-          # Create migration task definition JSON
-          cat > migration-taskdef.json << EOF
-          {
-            "family": "java-full-stack-migrations",
-            "networkMode": "awsvpc",
-            "requiresCompatibilities": ["FARGATE"],
-            "cpu": "256",
-            "memory": "512",
-            "executionRoleArn": "$TASK_EXEC_ROLE_ARN",
-            "taskRoleArn": "$TASK_ROLE_ARN",
-            "containerDefinitions": [
-              {
-                "name": "migrations",
-                "image": "$ECR_REGISTRY/$ECR_REPOSITORY:latest",
-                "essential": true,
-                "command": ["/migrate.sh"],
-                "environment": [
-                  {
-                    "name": "DB_HOST",
-                    "value": "$DB_ENDPOINT"
-                  },
-                  {
-                    "name": "DB_NAME",
-                    "value": "photogallery"
-                  },
-                  {
-                    "name": "DB_USER",
-                    "value": "postgres"
-                  }
-                ],
-                "secrets": [
-                  {
-                    "name": "DB_PASSWORD",
-                    "valueFrom": "${DB_SECRET_ARN}:password::"
-                  }
-                ],
-                "logConfiguration": {
-                  "logDriver": "awslogs",
-                  "options": {
-                    "awslogs-group": "/ecs/java-full-stack",
-                    "awslogs-region": "$AWS_REGION",
-                    "awslogs-stream-prefix": "migrations"
-                  }
-                }
-              }
-            ]
-          }
-          EOF
-          
-          # Register the task definition
-          aws ecs register-task-definition --cli-input-json file://migration-taskdef.json
-          echo "Migration task definition created successfully"
-
-      - name: Debug - Verify Task Definition
-        run: |
-          aws ecs describe-task-definition --task-definition java-full-stack-migrations --query 'taskDefinition.containerDefinitions[0]'
 
       - name: Generate Deployment Artifacts
         env:
@@ -131,17 +51,6 @@ jobs:
           ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
           AWS_REGION: eu-west-1
         run: |
-          # Get the latest task definition using family name
-          echo "Searching for latest task definition for family: java-full-stack-Task"
-          TASK_DEF_ARN=$(aws ecs describe-task-definition --task-definition java-full-stack-Task --query 'taskDefinition.taskDefinitionArn' --output text 2>/dev/null || echo "")
-          
-          if [ -z "$TASK_DEF_ARN" ]; then
-            echo "No existing task definition found. Will create a new one."
-            TASK_DEF_ARN="arn:aws:ecs:$AWS_REGION:$(aws sts get-caller-identity --query Account --output text):task-definition/java-full-stack-Task"
-          else
-            echo "Found existing task definition: $TASK_DEF_ARN"
-          fi
-          
           # Get values from CloudFormation outputs
           DB_ENDPOINT=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='RDSInstanceEndpoint'].OutputValue" --output text)
           DB_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='DBSecretArn'].OutputValue" --output text)
@@ -149,20 +58,14 @@ jobs:
           TASK_EXEC_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskExecutionRoleArn'].OutputValue" --output text)
           TASK_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskRoleArn'].OutputValue" --output text)
           
-          echo "DB Endpoint: $DB_ENDPOINT"
-          echo "DB Secret ARN: $DB_SECRET_ARN"
-          echo "S3 Bucket Name: $S3_BUCKET_NAME"
-          echo "Task Execution Role ARN: $TASK_EXEC_ROLE_ARN"
-          echo "Task Role ARN: $TASK_ROLE_ARN"
-          
-          # Create appspec.yml with the task definition ARN
+          # Create appspec.yml
           cat > appspec.yml << EOF
           version: 0.0
           Resources:
             - TargetService:
                 Type: AWS::ECS::Service
                 Properties:
-                  TaskDefinition: "$TASK_DEF_ARN"
+                  TaskDefinition: "arn:aws:ecs:$AWS_REGION:\$(aws sts get-caller-identity --query Account --output text):task-definition/java-full-stack-Task"
                   LoadBalancerInfo:
                     ContainerName: "java-full-stack-Container"
                     ContainerPort: 8080
@@ -183,44 +86,16 @@ jobs:
                 "name": "java-full-stack-Container",
                 "image": "$ECR_REGISTRY/$ECR_REPOSITORY:latest",
                 "essential": true,
-                "portMappings": [
-                  {
-                    "containerPort": 8080,
-                    "protocol": "tcp"
-                  }
-                ],
+                "portMappings": [{"containerPort": 8080, "protocol": "tcp"}],
                 "environment": [
-                  {
-                    "name": "SPRING_DATASOURCE_URL",
-                    "value": "jdbc:postgresql://${DB_ENDPOINT}/photogallery"
-                  },
-                  {
-                    "name": "SPRING_DATASOURCE_USERNAME",
-                    "value": "postgres"
-                  },
-                  {
-                    "name": "S3_BUCKET_NAME",
-                    "value": "$S3_BUCKET_NAME"
-                  },
-                  {
-                    "name": "AWS_REGION",
-                    "value": "eu-west-1"
-                  }
+                  {"name": "SPRING_DATASOURCE_URL", "value": "jdbc:postgresql://${DB_ENDPOINT}/photogallery"},
+                  {"name": "SPRING_DATASOURCE_USERNAME", "value": "postgres"},
+                  {"name": "S3_BUCKET_NAME", "value": "$S3_BUCKET_NAME"},
+                  {"name": "AWS_REGION", "value": "eu-west-1"}
                 ],
                 "secrets": [
-                  {
-                    "name": "SPRING_DATASOURCE_PASSWORD",
-                    "valueFrom": "${DB_SECRET_ARN}:password::"
-
-                  }
+                  {"name": "SPRING_DATASOURCE_PASSWORD", "valueFrom": "${DB_SECRET_ARN}:password::"}
                 ],
-                "healthCheck": {
-                  "command": ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"],
-                  "interval": 30,
-                  "timeout": 10,
-                  "retries": 3,
-                  "startPeriod": 60
-                },
                 "logConfiguration": {
                   "logDriver": "awslogs",
                   "options": {
@@ -234,147 +109,14 @@ jobs:
           }
           EOF
 
-          # Create the ZIP file that CodeDeploy expects
           zip -r deployment-artifacts.zip appspec.yml taskdef.json
-
-          echo "Generated deployment-artifacts.zip contents:"
-          unzip -l deployment-artifacts.zip
 
       - name: Upload Deployment Artifacts to S3
         run: |
-          # Get the artifact bucket name from CloudFormation
           ARTIFACT_BUCKET=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ArtifactBucketName'].OutputValue" --output text)
-          echo "Using artifact bucket: $ARTIFACT_BUCKET"
-          
-          # Upload the ZIP file to S3
           aws s3 cp deployment-artifacts.zip s3://$ARTIFACT_BUCKET/deployment-artifacts/latest.zip
-          
-          # Also upload individual files for reference
-          aws s3 cp appspec.yml s3://$ARTIFACT_BUCKET/deployment-artifacts/
-          aws s3 cp taskdef.json s3://$ARTIFACT_BUCKET/deployment-artifacts/
 
       - name: Trigger CodePipeline Execution
         run: |
-          # Use the pipeline name from CloudFormation output instead of a hardcoded name.
           PIPELINE_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='CodePipelineName'].OutputValue" --output text)
-          echo "Starting pipeline: $PIPELINE_NAME"
-          
-          # Manually start the pipeline after uploading artifacts
           aws codepipeline start-pipeline-execution --name $PIPELINE_NAME
-          echo "Pipeline execution triggered"
-
-      #      - name: Wait for CodePipeline to complete
-      #        run: |
-      #          PIPELINE_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='CodePipelineName'].OutputValue" --output text)
-      #          echo "Waiting for pipeline: $PIPELINE_NAME to complete..."
-      #
-      #          # Wait for pipeline execution to complete
-      #          MAX_WAIT_MINUTES=30
-      #          WAIT_INTERVAL=30
-      #          TOTAL_WAIT=0
-      #
-      #          while [ $TOTAL_WAIT -lt $((MAX_WAIT_MINUTES * 60)) ]; do
-      #            STATUS=$(aws codepipeline list-pipeline-executions --pipeline-name $PIPELINE_NAME --query 'pipelineExecutionSummaries[0].status' --output text)
-      #            echo "Pipeline status: $STATUS (waited $TOTAL_WAIT seconds)"
-      #
-      #            if [ "$STATUS" = "Succeeded" ]; then
-      #              echo "✅ Pipeline completed successfully!"
-      #              break
-      #            elif [ "$STATUS" = "Failed" ]; then
-      #              echo "❌ Pipeline failed!"
-      #              exit 1
-      #            fi
-      #
-      #            sleep $WAIT_INTERVAL
-      #            TOTAL_WAIT=$((TOTAL_WAIT + WAIT_INTERVAL))
-      #          done
-      #
-      #          if [ $TOTAL_WAIT -ge $((MAX_WAIT_MINUTES * 60)) ]; then
-      #            echo "⚠️  Pipeline timed out after $MAX_WAIT_MINUTES minutes"
-      #            exit 1
-      #          fi
-
-      - name: Run Database Migrations
-        env:
-          AWS_REGION: eu-west-1
-        run: |
-          echo "Running database migrations after successful deployment..."
-          
-          # Get infrastructure details from CloudFormation outputs
-          SUBNET1=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet1Id'].OutputValue" --output text)
-          SUBNET2=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='PrivateSubnet2Id'].OutputValue" --output text)
-          SECURITY_GROUP=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSSecurityGroupId'].OutputValue" --output text)
-          CLUSTER_NAME=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSClusterName'].OutputValue" --output text)
-          RDS_INSTANCE_ENDPOINT=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='RDSInstanceEndpoint'].OutputValue" --output text)
-          
-          # Define the command to run the migrations script with the DB host
-          MIGRATE_COMMAND="/app/migrate.sh $RDS_INSTANCE_ENDPOINT"
-          
-          echo "Running migration task on Fargate..."
-          MIGRATION_TASK=$(aws ecs run-task \
-          --cluster $CLUSTER_NAME \
-          --task-definition java-full-stack-migrations \
-          --launch-type FARGATE \
-          --network-configuration "awsvpcConfiguration={subnets=[$SUBNET1,$SUBNET2],securityGroups=[$SECURITY_GROUP],assignPublicIp=DISABLED}" \
-          --overrides "containerOverrides=[{name='migrations',command=['/bin/sh','-c','$MIGRATE_COMMAND']}]" \
-          --query 'tasks[0].taskArn' \
-          --output text)
-          
-          echo "Migration task started: $MIGRATION_TASK"
-          
-          # Wait for task completion with detailed debugging
-          MAX_ATTEMPTS=30
-          DELAY=10
-          ATTEMPT=0
-          TASK_STATUS=""
-          
-          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
-          TASK_DETAILS=$(aws ecs describe-tasks --cluster $CLUSTER_NAME --tasks $MIGRATION_TASK)
-          TASK_STATUS=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].lastStatus')
-          EXIT_CODE=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].containers[0].exitCode')
-          STOPPED_REASON=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].stoppedReason // "N/A"')
-          
-          echo "Attempt $((ATTEMPT+1))/$MAX_ATTEMPTS - Status: $TASK_STATUS, Exit: $EXIT_CODE, Reason: $STOPPED_REASON"
-          
-          # Check if task has stopped
-          if [ "$TASK_STATUS" = "STOPPED" ]; then
-           break
-          fi
-          
-          sleep $DELAY
-          ATTEMPT=$((ATTEMPT+1))
-          done
-          
-          # Get final task details
-          TASK_DETAILS=$(aws ecs describe-tasks --cluster $CLUSTER_NAME --tasks $MIGRATION_TASK)
-          STOPPED_REASON=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].stoppedReason // "N/A"')
-          EXIT_CODE=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].containers[0].exitCode')
-          
-          echo "Final task status:"
-          echo "$TASK_DETAILS" | jq '.tasks[0]'
-          
-          if [ "$EXIT_CODE" != "0" ] && [ "$EXIT_CODE" != "null" ]; then
-          echo "❌ Migration failed with exit code: $EXIT_CODE"
-          echo "Stopped reason: $STOPPED_REASON"
-          
-          # Get logs from CloudWatch
-          LOG_STREAM=$(echo "$TASK_DETAILS" | jq -r '.tasks[0].containers[0].logStreamName')
-          if [ "$LOG_STREAM" != "null" ] && [ "$LOG_STREAM" != "None" ]; then
-           echo "Migration logs:"
-           aws logs get-log-events --log-group-name /ecs/java-full-stack --log-stream-name "$LOG_STREAM" --query 'events[].message' --output text
-          fi
-          exit 1
-          elif [ "$EXIT_CODE" = "null" ]; then
-          echo "❌ Task failed during provisioning: $STOPPED_REASON"
-          exit 1
-          else
-          echo "✅ Database migrations completed successfully!"
-          fi
-      - name: Copy static resources
-        run: |
-          # Copy HTML, CSS, and JS files to the build directory
-          mkdir -p build/resources/main/static
-          cp src/main/resources/static/* build/resources/main/static/ || true
-          cp *.html build/resources/main/static/ || true
-          cp *.css build/resources/main/static/ || true
-          cp *.js build/resources/main/static/ || true
