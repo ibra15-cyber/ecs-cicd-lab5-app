@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Gallery App - Modern SPA</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📷</text></svg>">
+    <link rel="stylesheet" href="css/style.css"></link>
+</head>
+<body>
+<!-- Header -->
+<header class="header">
+    <div class="header-container">
+        <div class="logo" onclick="location.reload()">📷 Photo Gallery</div>
+
+        <div class="search-container">
+            <input type="text" class="search-input" id="searchInput" placeholder="Search photos by description, tags, or location...">
+            <span class="search-icon">🔍</span>
+        </div>
+
+        <div class="header-actions">
+            <button class="btn btn-secondary" onclick="refreshGallery()" id="refreshBtn">
+                <span>🔄</span>Refresh
+            </button>
+            <button class="btn btn-primary" onclick="openUploadModal()">
+                <span>📤</span>Upload Photo
+            </button>
+        </div>
+    </div>
+</header>
+
+<!-- Main Content -->
+<main class="main">
+    <div class="container">
+        <div id="galleryContainer" class="gallery-grid">
+            <!-- Photos will be loaded here -->
+        </div>
+
+        <div id="emptyState" class="empty-state" style="display: none;">
+            <div class="empty-state-icon">📷</div>
+            <h3>No Photos Found</h3>
+            <p>Start building your gallery by uploading your first photo!</p>
+            <button class="btn btn-primary" onclick="openUploadModal()" style="margin-top: 1rem;">
+                Upload Your First Photo
+            </button>
+        </div>
+    </div>
+</main>
+
+<!-- Footer -->
+<footer class="footer">
+    <div class="container">
+        <p><strong>Developer:</strong> IBRAHIM ANYRAS SAFIANU</p>
+        <p style="margin-top: 0.5rem; font-size: 0.875rem;">Modern SPA Photo Gallery with Spring Boot REST API & AWS S3</p>
+    </div>
+</footer>
+
+<!-- Upload Modal -->
+<div class="modal-overlay" id="uploadModal">
+    <div class="modal-content">
+        <button class="modal-close" onclick="closeUploadModal()">&times;</button>
+        <h2 style="margin-bottom: 1.5rem; color: var(--text-primary);">📤 Upload New Photo</h2>
+
+        <form class="upload-form" id="uploadForm">
+            <div class="file-drop-zone" id="fileDropZone" onclick="document.getElementById('fileInput').click()">
+                <div style="font-size: 3rem; margin-bottom: 1rem; opacity: 0.7;">🖼️</div>
+                <div style="font-size: 1.125rem; margin-bottom: 0.5rem;">Drop your photo here or click to browse</div>
+                <div style="color: var(--text-muted); font-size: 0.875rem;">JPG, PNG, GIF up to 10MB</div>
+                <input type="file" id="fileInput" class="file-input" accept="image/*" required>
+            </div>
+
+            <div id="filePreview" style="display: none; margin-bottom: 1.5rem; text-align: center;">
+                <img id="previewImage" style="max-width: 200px; max-height: 100px; border-radius: 8px; margin-bottom: 0.5rem;">
+                <div id="fileInfo" style="font-size: 0.875rem; color: var(--text-muted);"></div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="description">Description *</label>
+                <textarea class="form-input form-textarea" id="description" placeholder="Describe your photo..." required maxlength="500"></textarea>
+                <div style="text-align: right; font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">
+                    <span id="charCount">0</span>/500
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="tags">Tags (optional)</label>
+                <input type="text" class="form-input" id="tags" placeholder="e.g., nature, sunset, travel">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="location">Location (optional)</label>
+                <input type="text" class="form-input" id="location" placeholder="e.g., Paris, France">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label" for="category">Category (optional)</label>
+                <input type="text" class="form-input" id="category" placeholder="e.g., Portrait, Landscape, Street">
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width: 100%;" id="uploadBtn">
+                <span id="uploadBtnText">Upload Photo</span>
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Photo View Modal -->
+<div class="modal-overlay photo-modal" id="photoModal">
+    <div class="modal-content photo-modal-content">
+        <button class="modal-close" onclick="closePhotoModal()">&times;</button>
+        <img id="modalImage" class="photo-modal-image">
+        <div id="modalInfo" style="text-align: center; margin-top: 1rem; color: var(--text-secondary);"></div>
+    </div>
+</div>
+
+<!-- Notification Container -->
+<div id="notification" class="notification"></div>
+
+<script src="../static/js/app.js"></script>
+</body>
+</html>
