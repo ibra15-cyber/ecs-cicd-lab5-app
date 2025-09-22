@@ -29,35 +29,25 @@ public class AwsConfig {
     @Value("${cloud.aws.credentials.access-key}")
     private String accessKey;
 
-    @Bean
-    public S3Client s3Client() {
-        return S3Client.builder()
-                .region(Region.of(awsRegion))
-                .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(accessKey, secretKey)))
-                .build();
-    }
-
 //    @Bean
 //    public S3Client s3Client() {
-//        log.info("Initializing S3 Client for region: {} and bucket: {}", awsRegion, bucketName);
-//
-//        S3ClientBuilder builder = S3Client.builder()
+//        return S3Client.builder()
 //                .region(Region.of(awsRegion))
-//                .credentialsProvider(DefaultCredentialsProvider.create());
-//
-//        return builder.build();
-//    }
-
-//    @Bean
-//    public S3Presigner s3Presigner() {
-//        log.info("Initializing S3 Presigner for region: {}", awsRegion);
-//
-//        return S3Presigner.builder()
-//                .region(Region.of(awsRegion))
-//                .credentialsProvider(DefaultCredentialsProvider.create())
+//                .credentialsProvider(StaticCredentialsProvider.create(
+//                        AwsBasicCredentials.create(accessKey, secretKey)))
 //                .build();
 //    }
+
+    @Bean
+    public S3Client s3Client() {
+        log.info("Initializing S3 Client for region: {} and bucket: {}", awsRegion, bucketName);
+
+        S3ClientBuilder builder = S3Client.builder()
+                .region(Region.of(awsRegion))
+                .credentialsProvider(DefaultCredentialsProvider.create());
+
+        return builder.build();
+    }
 
     @Bean
     public S3Presigner s3Presigner() {
@@ -65,10 +55,20 @@ public class AwsConfig {
 
         return S3Presigner.builder()
                 .region(Region.of(awsRegion))
-                .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(accessKey, secretKey))) // <-- Change to use credentials from properties
+                .credentialsProvider(DefaultCredentialsProvider.create())
                 .build();
     }
+
+//    @Bean
+//    public S3Presigner s3Presigner() {
+//        log.info("Initializing S3 Presigner for region: {}", awsRegion);
+//
+//        return S3Presigner.builder()
+//                .region(Region.of(awsRegion))
+//                .credentialsProvider(StaticCredentialsProvider.create(
+//                        AwsBasicCredentials.create(accessKey, secretKey))) // <-- Change to use credentials from properties
+//                .build();
+//    }
 
     @Bean
     @Profile("local")
