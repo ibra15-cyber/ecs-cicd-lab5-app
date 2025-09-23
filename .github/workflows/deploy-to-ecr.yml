@@ -58,19 +58,19 @@ jobs:
           TASK_EXEC_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskExecutionRoleArn'].OutputValue" --output text)
           TASK_ROLE_ARN=$(aws cloudformation describe-stacks --stack-name ibra-cfn-infrastructure --query "Stacks[0].Outputs[?OutputKey=='ECSTaskRoleArn'].OutputValue" --output text)
           
-          # Create appspec.yml
+          # Create appspec.yml with just the family name (CodeDeploy will resolve it)
           cat > appspec.yml << EOF
           version: 0.0
           Resources:
             - TargetService:
                 Type: AWS::ECS::Service
                 Properties:
-                  TaskDefinition: "arn:aws:ecs:$AWS_REGION:\$(aws sts get-caller-identity --query Account --output text):task-definition/java-full-stack-Task"
+                  TaskDefinition: "java-full-stack-Task"
                   LoadBalancerInfo:
                     ContainerName: "java-full-stack-Container"
                     ContainerPort: 8080
           EOF
-
+          
           # Create taskdef.json
           cat > taskdef.json << EOF
           {
@@ -108,7 +108,7 @@ jobs:
             ]
           }
           EOF
-
+          
           zip -r deployment-artifacts.zip appspec.yml taskdef.json
 
       - name: Upload Deployment Artifacts to S3
