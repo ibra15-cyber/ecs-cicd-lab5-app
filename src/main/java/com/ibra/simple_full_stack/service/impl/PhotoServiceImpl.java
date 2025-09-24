@@ -28,7 +28,7 @@ public class PhotoServiceImpl implements PhotoService {
     private final S3Service s3Service;
     private final PhotoMapper photoMapper;
 
-    private static final int PRESIGNED_URL_DURATION_DAYS = 7;
+    private static final int PRESIGNED_URL_DURATION_DAYS = 3;
     private static final long MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
     private static final List<String> ALLOWED_CONTENT_TYPES = List.of(
             "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"
